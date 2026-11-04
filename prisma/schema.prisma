@@ -1,0 +1,482 @@
+// The AdSphere Awards - Database Schema
+// Neon Serverless PostgreSQL
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  SUPER_ADMIN
+  EVENT_MANAGER
+  AWARD_COORDINATOR
+  JURY_MEMBER
+  SPONSOR_MANAGER
+  SPEAKER_COORDINATOR
+  REGISTRATION_MANAGER
+  CHECKIN_STAFF
+}
+
+enum SubmissionStatus {
+  SUBMITTED
+  UNDER_REVIEW
+  ADDITIONAL_INFO_REQUIRED
+  APPROVED
+  SHORTLISTED
+  NOT_SHORTLISTED
+  WITHDRAWN
+}
+
+enum AttendeeCategory {
+  INDUSTRY_PROFESSIONAL
+  BRAND_REPRESENTATIVE
+  AGENCY_REPRESENTATIVE
+  STUDENT
+  ENTREPRENEUR
+  INVITED_GUEST
+  OTHER
+}
+
+enum PreferredDay {
+  DAY_1
+  DAY_2
+  BOTH
+}
+
+enum RegistrationStatus {
+  PENDING
+  CONFIRMED
+  CANCELLED
+  CHECKED_IN
+}
+
+enum TicketStatus {
+  VALID
+  CHECKED_IN
+  CANCELLED
+  INVALID
+}
+
+enum ApplicantType {
+  INDIVIDUAL
+  ADVERTISING_AGENCY
+  CREATIVE_AGENCY
+  BRAND
+  MARKETING_TEAM
+  OTHER
+}
+
+enum SponsorTier {
+  TITLE
+  PLATINUM
+  GOLD
+  SILVER
+  BRONZE
+  PARTNER
+  MEDIA
+}
+
+model User {
+  id            String    @id @default(cuid())
+  email         String    @unique
+  passwordHash  String
+  name          String
+  role          Role      @default(REGISTRATION_MANAGER)
+  isActive      Boolean   @default(true)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  juryMember    JuryMember?
+  checkIns      CheckIn[]
+  auditLogs     AuditLog[]
+  evaluations   JuryEvaluation[]
+
+  @@index([email])
+  @@index([role])
+}
+
+model Event {
+  id          String   @id @default(cuid())
+  name        String   @default("The AdSphere Awards")
+  tagline     String   @default("Where Ideas Become Icons.")
+  description String?  @db.Text
+  startDate   DateTime @default("2027-02-20T09:00:00Z")
+  endDate     DateTime @default("2027-02-21T22:00:00Z")
+  location    String   @default("Bengaluru, Karnataka, India")
+  venueName   String?
+  venueAddress String?
+  venueMapUrl String?
+  isPublished Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  settings    EventSetting[]
+  sessions    EventSession[]
+}
+
+model EventSetting {
+  id        String   @id @default(cuid())
+  eventId   String
+  key       String
+  value     String   @db.Text
+  event     Event    @relation(fields: [eventId], references: [id], onDelete: Cascade)
+
+  @@unique([eventId, key])
+}
+
+model AwardCategory {
+  id                String   @id @default(cuid())
+  name              String
+  slug              String   @unique
+  description       String?  @db.Text
+  eligibility       String?  @db.Text
+  guidelines        String?  @db.Text
+  submissionOpen    DateTime?
+  submissionClose   DateTime?
+  isActive          Boolean  @default(true)
+  entryType         String?
+  sortOrder         Int      @default(0)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  submissions       AwardSubmission[]
+  juryAssignments   JuryAssignment[]
+  evaluationCriteria EvaluationCriterion[]
+
+  @@index([isActive])
+}
+
+model AwardSubmission {
+  id                String           @id @default(cuid())
+  submissionId      String           @unique
+  applicantName     String
+  email             String
+  mobile            String
+  organisation      String
+  designation       String?
+  city              String
+  country           String           @default("India")
+  applicantType     ApplicantType
+  campaignTitle     String
+  campaignDescription String         @db.Text
+  categoryId        String
+  launchDate        DateTime?
+  objectives        String?          @db.Text
+  targetAudience    String?          @db.Text
+  creativeStrategy  String?          @db.Text
+  resultsImpact     String?          @db.Text
+  portfolioLink     String?
+  hasPermission     Boolean          @default(false)
+  acceptedTerms     Boolean          @default(false)
+  status            SubmissionStatus @default(SUBMITTED)
+  isPublic          Boolean          @default(false)
+  adminNotes        String?          @db.Text
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
+
+  category          AwardCategory    @relation(fields: [categoryId], references: [id])
+  files             SubmissionFile[]
+  statusHistory     SubmissionStatusHistory[]
+  evaluations       JuryEvaluation[]
+  nominee           Nominee?
+
+  @@index([email])
+  @@index([status])
+  @@index([categoryId])
+  @@index([submissionId])
+}
+
+model SubmissionFile {
+  id            String   @id @default(cuid())
+  submissionId  String
+  fileName      String
+  fileUrl       String
+  fileType      String
+  fileSize      Int
+  createdAt     DateTime @default(now())
+
+  submission    AwardSubmission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+}
+
+model SubmissionStatusHistory {
+  id            String           @id @default(cuid())
+  submissionId  String
+  fromStatus    SubmissionStatus?
+  toStatus      SubmissionStatus
+  changedBy     String?
+  notes         String?
+  createdAt     DateTime         @default(now())
+
+  submission    AwardSubmission  @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+}
+
+model JuryMember {
+  id            String   @id @default(cuid())
+  userId        String?  @unique
+  name          String
+  email         String   @unique
+  organisation  String?
+  designation   String?
+  biography     String?  @db.Text
+  photoUrl      String?
+  expertise     String?
+  isActive      Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  user          User?    @relation(fields: [userId], references: [id])
+  assignments   JuryAssignment[]
+  evaluations   JuryEvaluation[]
+}
+
+model JuryAssignment {
+  id            String   @id @default(cuid())
+  juryMemberId  String
+  categoryId    String
+  createdAt     DateTime @default(now())
+
+  juryMember    JuryMember    @relation(fields: [juryMemberId], references: [id], onDelete: Cascade)
+  category      AwardCategory @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+
+  @@unique([juryMemberId, categoryId])
+}
+
+model EvaluationCriterion {
+  id          String   @id @default(cuid())
+  categoryId  String?
+  name        String
+  description String?
+  maxScore    Int      @default(10)
+  sortOrder   Int      @default(0)
+  isActive    Boolean  @default(true)
+
+  category    AwardCategory? @relation(fields: [categoryId], references: [id])
+  scores      EvaluationScore[]
+}
+
+model JuryEvaluation {
+  id            String   @id @default(cuid())
+  submissionId  String
+  juryMemberId  String
+  userId        String?
+  comments      String?  @db.Text
+  totalScore    Float?
+  isComplete    Boolean  @default(false)
+  evaluatedAt   DateTime?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  submission    AwardSubmission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+  juryMember    JuryMember      @relation(fields: [juryMemberId], references: [id], onDelete: Cascade)
+  user          User?           @relation(fields: [userId], references: [id])
+  scores        EvaluationScore[]
+
+  @@unique([submissionId, juryMemberId])
+}
+
+model EvaluationScore {
+  id              String   @id @default(cuid())
+  evaluationId    String
+  criterionId     String
+  score           Float
+  createdAt       DateTime @default(now())
+
+  evaluation      JuryEvaluation     @relation(fields: [evaluationId], references: [id], onDelete: Cascade)
+  criterion       EvaluationCriterion @relation(fields: [criterionId], references: [id])
+
+  @@unique([evaluationId, criterionId])
+}
+
+model Nominee {
+  id            String   @id @default(cuid())
+  submissionId  String   @unique
+  isFinalist    Boolean  @default(false)
+  isWinner      Boolean  @default(false)
+  specialRecognition String?
+  publishedAt   DateTime?
+  isPublished   Boolean  @default(false)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  submission    AwardSubmission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+}
+
+model Attendee {
+  id                String            @id @default(cuid())
+  registrationId    String            @unique
+  fullName          String
+  email             String
+  mobile            String
+  organisation      String?
+  designation       String?
+  city              String
+  country           String            @default("India")
+  category          AttendeeCategory
+  preferredDay      PreferredDay
+  dietaryRequirements String?
+  accessibilityNeeds  String?
+  acceptedTerms     Boolean           @default(false)
+  status            RegistrationStatus @default(PENDING)
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+
+  ticket            Ticket?
+  checkIns          CheckIn[]
+
+  @@unique([email])
+  @@index([registrationId])
+  @@index([status])
+}
+
+model Ticket {
+  id              String       @id @default(cuid())
+  attendeeId      String       @unique
+  ticketNumber    String       @unique
+  qrToken         String       @unique
+  qrCodeDataUrl   String?      @db.Text
+  status          TicketStatus @default(VALID)
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+
+  attendee        Attendee     @relation(fields: [attendeeId], references: [id], onDelete: Cascade)
+  checkIns        CheckIn[]
+}
+
+model CheckIn {
+  id            String   @id @default(cuid())
+  ticketId      String
+  attendeeId    String
+  checkedInBy   String?
+  checkedInAt   DateTime @default(now())
+  notes         String?
+
+  ticket        Ticket   @relation(fields: [ticketId], references: [id])
+  attendee      Attendee @relation(fields: [attendeeId], references: [id])
+  staff         User?    @relation(fields: [checkedInBy], references: [id])
+
+  @@index([ticketId])
+}
+
+model Sponsor {
+  id            String      @id @default(cuid())
+  name          String
+  logoUrl       String?
+  website       String?
+  tier          SponsorTier @default(PARTNER)
+  description   String?     @db.Text
+  isPublished   Boolean     @default(false)
+  sortOrder     Int         @default(0)
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+}
+
+model Speaker {
+  id            String   @id @default(cuid())
+  name          String
+  designation   String?
+  organisation  String?
+  biography     String?  @db.Text
+  photoUrl      String?
+  expertise     String?
+  sessionRole   String?
+  isPublished   Boolean  @default(false)
+  sortOrder     Int      @default(0)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
+
+model Artist {
+  id            String   @id @default(cuid())
+  name          String
+  photoUrl      String?
+  biography     String?  @db.Text
+  performanceType String?
+  scheduleInfo  String?
+  isPublished   Boolean  @default(false)
+  sortOrder     Int      @default(0)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
+
+model EventSession {
+  id            String   @id @default(cuid())
+  eventId       String
+  day           Int
+  title         String
+  description   String?  @db.Text
+  startTime     DateTime
+  endTime       DateTime
+  location      String?
+  speakerNames  String?
+  isPublished   Boolean  @default(false)
+  sortOrder     Int      @default(0)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  event         Event    @relation(fields: [eventId], references: [id], onDelete: Cascade)
+}
+
+model Spoc {
+  id            String   @id @default(cuid())
+  name          String
+  designation   String?
+  department    String
+  email         String
+  mobile        String?
+  whatsapp      String?
+  responsibility String? @db.Text
+  isPrimary     Boolean  @default(true)
+  isActive      Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
+
+model EmailTemplate {
+  id            String   @id @default(cuid())
+  name          String   @unique
+  subject       String
+  bodyHtml      String   @db.Text
+  bodyText      String?  @db.Text
+  variables     String[]
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
+
+model EmailLog {
+  id            String   @id @default(cuid())
+  toEmail       String
+  subject       String
+  templateName  String?
+  status        String
+  resendId      String?
+  errorMessage  String?
+  sentAt        DateTime?
+  createdAt     DateTime @default(now())
+}
+
+model MediaAsset {
+  id            String   @id @default(cuid())
+  fileName      String
+  fileUrl       String
+  fileType      String
+  fileSize      Int
+  altText       String?
+  createdAt     DateTime @default(now())
+}
+
+model AuditLog {
+  id            String   @id @default(cuid())
+  userId        String?
+  action        String
+  entityType    String?
+  entityId      String?
+  details       String?  @db.Text
+  ipAddress     String?
+  createdAt     DateTime @default(now())
+
+  user          User?    @relation(fields: [userId], references: [id])
+}
