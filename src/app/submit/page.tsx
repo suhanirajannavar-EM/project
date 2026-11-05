@@ -30,8 +30,19 @@ const schema = z.object({
 
 type FormData = z.infer<typeof schema>;
 
+const FALLBACK_CATEGORIES = [
+  { id: "cat-best-brand-campaign", name: "Best Brand Campaign" },
+  { id: "cat-best-creative-idea", name: "Best Creative Idea" },
+  { id: "cat-best-digital-campaign", name: "Best Digital Campaign" },
+  { id: "cat-best-film-tv", name: "Best Film / TV Commercial" },
+  { id: "cat-best-integrated", name: "Best Integrated Campaign" },
+  { id: "cat-young-creative", name: "Young Creative of the Year" },
+  { id: "cat-best-print", name: "Best Print / Outdoor" },
+  { id: "cat-best-social", name: "Best Social Media Campaign" },
+];
+
 export default function SubmitPage() {
-  const [categories, setCategories] = useState<{ id: string; name: string }[]>([]);
+  const [categories, setCategories] = useState<{ id: string; name: string }[]>(FALLBACK_CATEGORIES);
   const [status, setStatus] = useState<"idle" | "loading" | "success" | "error">("idle");
   const [message, setMessage] = useState("");
   const [submissionId, setSubmissionId] = useState("");
@@ -44,14 +55,10 @@ export default function SubmitPage() {
   useEffect(() => {
     fetch("/api/categories")
       .then((r) => r.json())
-      .then((d) => setCategories(d.categories || []))
-      .catch(() =>
-        setCategories([
-          { id: "placeholder-1", name: "Best Brand Campaign" },
-          { id: "placeholder-2", name: "Best Creative Idea" },
-          { id: "placeholder-3", name: "Best Digital Campaign" },
-        ])
-      );
+      .then((d) => {
+        if (d.categories && d.categories.length > 0) setCategories(d.categories);
+      })
+      .catch(() => {});
   }, []);
 
   const onSubmit = async (data: FormData) => {
@@ -84,7 +91,7 @@ export default function SubmitPage() {
               Submission ID: <strong>{submissionId}</strong>
             </p>
             <p className="text-sm text-charcoal-400">
-              A confirmation email has been sent. Please save your Submission ID for future reference.
+              A confirmation email has been sent. Please save your Submission ID.
             </p>
           </div>
         </div>
@@ -97,7 +104,7 @@ export default function SubmitPage() {
       <div className="container-narrow max-w-2xl">
         <h1 className="text-4xl font-bold mb-2">Submit Your Entry</h1>
         <p className="text-charcoal-400 mb-8">
-          Submit your campaign for consideration at The AdSphere Awards. Fields marked * are required.
+          Submit your campaign for The AdSphere Awards. Fields marked * are required.
         </p>
 
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
