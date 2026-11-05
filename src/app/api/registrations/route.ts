@@ -17,6 +17,20 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
     }
 
+    // Ensure Attendee table exists
+    try {
+      await prisma.$queryRaw`SELECT 1 FROM "Attendee" LIMIT 1`;
+    } catch {
+      return NextResponse.json(
+        {
+          error:
+            "Database tables are not set up yet. Run in project root: npx prisma db push && npm run db:seed",
+        },
+        { status: 503 }
+      );
+    }
+
+    // Prevent duplicate email
     const existing = await prisma.attendee.findUnique({
       where: { email: body.email.toLowerCase() },
     });
@@ -73,23 +87,27 @@ export async function POST(req: NextRequest) {
       return a;
     });
 
-    const template = await prisma.emailTemplate.findUnique({
-      where: { name: "attendee_confirmation" },
-    });
-    if (template) {
-      const html = replaceVariables(template.bodyHtml, {
-        participant_name: attendee.fullName,
-        registration_id: registrationId,
-        ticket_number: ticketNumber,
-        event_name: "The AdSphere Awards",
-        event_date: "20–21 February 2027",
+    try {
+      const template = await prisma.emailTemplate.findUnique({
+        where: { name: "attendee_confirmation" },
       });
-      await sendEmail({
-        to: attendee.email,
-        subject: template.subject,
-        html: html + `<p><a href="${appUrl}/ticket/${qrToken}">View your ticket</a></p>`,
-        templateName: "attendee_confirmation",
-      });
+      if (template) {
+        const html = replaceVariables(template.bodyHtml, {
+          participant_name: attendee.fullName,
+          registration_id: registrationId,
+          ticket_number: ticketNumber,
+          event_name: "The AdSphere Awards",
+          event_date: "20–21 February 2027",
+        });
+        await sendEmail({
+          to: attendee.email,
+          subject: template.subject,
+          html: html + `<p><a href="${appUrl}/ticket/${qrToken}">View your ticket</a></p>`,
+          templateName: "attendee_confirmation",
+        });
+      }
+    } catch {
+      // email optional if Resend not configured
     }
 
     return NextResponse.json({
@@ -100,9 +118,13 @@ export async function POST(req: NextRequest) {
     });
   } catch (error: any) {
     console.error("Registration error:", error);
-    return NextResponse.json(
-      { error: error.message || "Registration failed" },
-      { status: 500 }
-    );
+    const msg = error?.message || "Registration failed";
+    if (msg.includes("does not exist") || msg.includes("P2021") || msg.includes("Attendee")) {
+      return NextResponse.json(
+        { error: "Database tables are not set up. Run: npx prisma db push && npm run db:seed" },
+        { status: 503 }
+      );
+    }
+    return NextResponse.json({ error: msg }, { status: 500 });
   }
 }
